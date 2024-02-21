@@ -6,6 +6,7 @@ pub const heap = std.heap;
 pub const mem = std.mem;
 pub const os = std.os;
 pub const editor = @import("editor.zig");
+pub const Editor = editor.Editor;
 pub const TITLE =
     \\                VERSION 0.0.1 
     \\      ___                       ___       ___     
@@ -22,9 +23,11 @@ pub const TITLE =
 ;
 
 pub fn main() !void {
-    std.debug.print("{s}\n", .{TITLE});
+    // std.debug.print("{s}\n", .{TITLE});
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const alloc = gpa.allocator();
     while (true) {
-        var edit: editor.Editor = .{};
+        var edit = try Editor.init(alloc);
         _ = try edit.dump();
         if (edit.exit) break;
     }
