@@ -10,7 +10,7 @@ pub const Editor = struct {
 
     termios: os.termios = undefined,
     exit: bool = false,
-    mode: Mode = .COM,
+    mode: Mode = .Command,
     alloc: std.mem.Allocator,
 
     // Terminal Offset
@@ -26,12 +26,14 @@ pub const Editor = struct {
     cy: i16,
 
     // Charset buffer
-    buffer: std.ArrayList([]const u8),
-    filepath: []const u8 = "Not named",
+    buffer: std.ArrayList([]u8),
+    bufferv2: std.ArrayList(u8),
+    filepath: []const u8 = "[No name]",
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const size: Size = try get_size();
-        const buffer: std.ArrayList([]const u8) = std.ArrayList([]const u8).init(allocator);
+        const buffer: std.ArrayList([]u8) = std.ArrayList([]u8).init(allocator);
+        const bufferv2: std.ArrayList(u8) = try std.ArrayList(u8).initCapacity(allocator, size.rows * size.cols * 2);
 
         return .{
             .alloc = allocator,
@@ -42,12 +44,14 @@ pub const Editor = struct {
             .row_offset = 0,
             .col_offset = 0,
             .buffer = buffer,
+            .bufferv2 = bufferv2,
         };
     }
 
     pub fn deinit(self: *Self) void {
         try self.buffer.deinit();
-        self.alloc.free(self.buffer);
+        try self.bufferv2.deinit();
+        // self.alloc.free(self.buffer);
         self.* = undefined;
     }
 
@@ -64,10 +68,27 @@ pub const Editor = struct {
     pub fn process(self: *Self) !void {
         const key: Key = try self.read();
         switch (key) {
-            .char => {},
+            .char => |c| self.insert(c),
             .movement => |m| self.move_cursor(m),
             .delete => {},
+            .inv => {},
         }
+    }
+
+    pub fn insert(self: *Self, char: u8) void {
+        var CY: u16 = @bitCast(self.cy);
+        var CX: u16 = @bitCast(self.cx);
+        var c = self.buffer.items[CY];
+
+        // std.debug.print("CURR ROW {any}\n", .{curr});
+        // if (curr) |c| {
+        // std.debug.print("CURR ROW {any}\n", .{c});
+        // CX = if (CX < 0 or CX > curr.len)
+        if (CX < 0 or CX > c.len) CX = @truncate(c.len);
+        c[CX] = char;
+        self.cx += 1;
+        // c.len += 1;
+
     }
     pub fn move_cursor(self: *Self, mov: Movement) void {
         var CY: u16 = @bitCast(self.cy);
@@ -81,14 +102,14 @@ pub const Editor = struct {
                     CY = @bitCast(self.cy);
                     const LEN: u16 = @truncate(self.buffer.items[CY].len);
                     const CX: i16 = @bitCast(LEN);
-                    self.cx = CX - 1;
+                    self.cx = CX;
                 }
             },
             .right => {
                 if (curr) |c| {
-                    if (self.cx + 1 < c.len) {
+                    if (self.cx < c.len) {
                         self.cx += 1;
-                    } else if (self.cx + 1 == c.len) {
+                    } else if (self.cx == c.len) {
                         self.cy += 1;
                         self.cx = 0;
                     }
@@ -125,7 +146,7 @@ pub const Editor = struct {
             if (self.cx > c.len) {
                 const CL: u16 = @truncate(c.len);
                 const CX: i16 = @bitCast(CL);
-                self.cx = CX - 1;
+                self.cx = CX;
             }
         }
     }
@@ -144,7 +165,8 @@ pub const Editor = struct {
     }
 
     pub fn render_status(self: *Self) !void {
-        try writer.print("{s}\t\t{s}\t\t{d}:{d}\t", .{ @tagName(self.mode), self.filepath, self.cy + 1, self.cx + 1 });
+        try writer.writeAll("\x1b[K");
+        try writer.print("{s}\t\t\t{s}\t\t\t{d}L:{d}C", .{ @tagName(self.mode), self.filepath, self.cy, self.cx });
         try writer.writeAll("\x1b[m");
     }
 
@@ -203,7 +225,7 @@ pub const Editor = struct {
         const ch = try reader.readByte();
 
         switch (self.mode) {
-            .COM, .VIS => {
+            .Command, .Visual => {
                 switch (ch) {
                     // TODO : add line skips to movement for command { etc...
                     'j' => return .{ .movement = .down },
@@ -213,8 +235,8 @@ pub const Editor = struct {
                     'h' => return .{ .movement = .left },
                     'l' => return .{ .movement = .right },
                     '0' => return .{ .movement = .zero_cx },
-                    'a', 'i' => self.mode = .INS,
-                    'v' => self.mode = .VIS,
+                    'a', 'i' => self.mode = .Insert,
+                    'v' => self.mode = .Visual,
                     'g' => {
                         const nch = reader.readByte() catch return .{ .movement = .escape };
                         switch (nch) {
@@ -233,10 +255,10 @@ pub const Editor = struct {
                     else => {},
                 }
             },
-            .INS => {
+            .Insert => {
                 switch (ch) {
                     '\x1b' => {
-                        self.mode = .COM;
+                        self.mode = .Command;
                         // const nch = reader.readByte() catch return .{ .movement = .escape };
                         // switch (nch) {
                         //     '\x71' => {
@@ -255,11 +277,13 @@ pub const Editor = struct {
                         // }
                     },
                     '\x7F' => return Key.delete,
-                    else => return .{ .char = ch },
+                    else => {
+                        return .{ .char = ch };
+                    },
                 }
             },
         }
-        return .{ .char = ch };
+        return Key.inv;
     }
     pub fn dump(self: *Self) !void {
         try self.enable_raw_mode();
@@ -289,6 +313,9 @@ pub const Editor = struct {
         raw.lflag &= ~@as(os.system.tcflag_t, os.system.ECHO | os.system.ICANON | os.system.IEXTEN | os.system.ISIG);
         raw.oflag &= ~@as(os.system.tcflag_t, os.system.OPOST);
         raw.iflag &= ~@as(os.system.tcflag_t, os.system.ICRNL | os.system.IXON);
+        raw.cflag |= os.system.CS8;
+        // raw.cc[os.system.V.MIN] = 0;
+        // raw.cc[os.system.V.TIME] = 1;
         try std.os.tcsetattr(stdin_fd, .FLUSH, raw);
     }
 
@@ -298,7 +325,7 @@ pub const Editor = struct {
 };
 
 const Size = struct { rows: u16, cols: u16 };
-const Mode = enum { COM, INS, VIS };
+const Mode = enum { Command, Insert, Visual };
 const Movement = enum {
     down,
     down_10,
@@ -316,6 +343,7 @@ const Key = union(enum) {
     char: u8,
     movement: Movement,
     delete: void,
+    inv: void,
 };
 
 pub const TITLE =
