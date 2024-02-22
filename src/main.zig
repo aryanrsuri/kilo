@@ -21,14 +21,16 @@ pub const TITLE =
     \\    \:\__\       \/__/        \:\__\    \::/  /   
     \\     \/__/                     \/__/     \/__/    
 ;
-
 pub fn main() !void {
     // std.debug.print("{s}\n", .{TITLE});
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
-    while (true) {
-        var edit = try Editor.init(alloc);
-        _ = try edit.dump();
-        if (edit.exit) break;
-    }
+    const args = try std.process.argsAlloc(alloc);
+    defer std.process.argsFree(alloc, args);
+    var edit = try Editor.init(alloc);
+    if (args.len == 2) try edit.open(args[1]);
+    try edit.enable_raw_mode();
+    defer edit.disable_raw_mode();
+    try edit.dump();
+    // edit.deinit();
 }
