@@ -68,7 +68,8 @@ pub const Editor = struct {
     pub fn process(self: *Self) !void {
         const key: Key = try self.read();
         switch (key) {
-            .char => |c| self.insert(c),
+            .char => {},
+            // .char => |c| self.insert(c),
             .movement => |m| self.move_cursor(m),
             .delete => {},
             .inv => {},
