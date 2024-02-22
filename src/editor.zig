@@ -26,14 +26,17 @@ pub const Editor = struct {
     cy: i16,
 
     // Charset buffer
+    // buffer: std.ArrayList([1048576]u8),
     buffer: std.ArrayList([]u8),
-    bufferv2: std.ArrayList(u8),
-    filepath: []const u8 = "[No name]",
+    // buffer: std.ArrayList(std.ArrayList(u8)),
+    lines: usize,
+    filepath: []const u8 = "No name",
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const size: Size = try get_size();
-        const buffer: std.ArrayList([]u8) = std.ArrayList([]u8).init(allocator);
-        const bufferv2: std.ArrayList(u8) = try std.ArrayList(u8).initCapacity(allocator, size.rows * size.cols * 2);
+        // const buffer: std.ArrayList([1048576]u8) = std.ArrayList([1048576]u8).init(allocator);
+        const buffer = std.ArrayList([]u8).init(allocator);
+        // const buffer: std.ArrayList(strs) = std.ArrayList(lines.items).init(allocator);
 
         return .{
             .alloc = allocator,
@@ -43,8 +46,8 @@ pub const Editor = struct {
             .cy = 0,
             .row_offset = 0,
             .col_offset = 0,
+            .lines = 0,
             .buffer = buffer,
-            .bufferv2 = bufferv2,
         };
     }
 
@@ -68,26 +71,49 @@ pub const Editor = struct {
     pub fn process(self: *Self) !void {
         const key: Key = try self.read();
         switch (key) {
-            .char => {},
-            // .char => |c| self.insert(c),
+            // .char => {},
+            .char => |c| try self.insert(c),
             .movement => |m| self.move_cursor(m),
             .delete => {},
             .inv => {},
         }
     }
 
-    pub fn insert(self: *Self, char: u8) void {
+    pub fn insert(self: *Self, char: u8) !void {
         var CY: u16 = @bitCast(self.cy);
         var CX: u16 = @bitCast(self.cx);
-        var c = self.buffer.items[CY];
+        if (self.buffer.items.len > 0) {
+            var c = self.buffer.items[CY];
+            // if (char == '\n') {
+            // var new_r = [_]u8{char};
+            // try self.buffer.append(&new_r);
+            // self.lines += 1;
+            // }
+            // var tests = [_]u8{'A'};
+            // var new = tests ++ c;
+            if (CX < c.len) {
+                c[CX] = char;
+                self.cx += 1;
+                c.len += 1;
+            }
+            // var new_r = c ++ [_]u8{char};
+            // try self.buffer.insert(CY, new);
+        } else {
+            var new_r = [_]u8{char};
+            try self.buffer.append(&new_r);
+            self.lines += 1;
+        }
+        // self.buffer.append(item: T)
+        // var c = self.buffer.items[CY];
+        // var new_c : [c.len + 1]u8 = undefined;
 
-        // std.debug.print("CURR ROW {any}\n", .{curr});
+        try self.render_rows();
         // if (curr) |c| {
         // std.debug.print("CURR ROW {any}\n", .{c});
         // CX = if (CX < 0 or CX > curr.len)
-        if (CX < 0 or CX > c.len) CX = @truncate(c.len);
-        c[CX] = char;
-        self.cx += 1;
+        // if (CX < 0 or CX > c.len) CX = @truncate(c.len);
+        // c[CX] = char;
+        // self.cx += 1;
         // c.len += 1;
 
     }
@@ -167,7 +193,7 @@ pub const Editor = struct {
 
     pub fn render_status(self: *Self) !void {
         try writer.writeAll("\x1b[K");
-        try writer.print("{s}\t\t\t{s}\t\t\t{d}L:{d}C", .{ @tagName(self.mode), self.filepath, self.cy, self.cx });
+        try writer.print("{s}\t\t\t[{s}]\t\t\t{d}:{d}:{d}L", .{ @tagName(self.mode), self.filepath, self.cy, self.cx, self.lines });
         try writer.writeAll("\x1b[m");
     }
 
@@ -218,8 +244,14 @@ pub const Editor = struct {
         const file = try std.fs.cwd().openFile(filename, .{});
         defer file.close();
         while (try file.reader().readUntilDelimiterOrEofAlloc(self.alloc, '\n', 1024 * 1024)) |line| {
+            // try self.buffer.insertSlice(self.lines, line);
+            // self.lines += line.len;
+            // try self.buffer.insert(self.lines, '\n');
+            // self.lines += 1;
             try self.buffer.append(line);
+            self.lines += 1;
         }
+        // std.debug.print("{c} {d}", .{ self.bufferv2.items, self.bufferv2.items.len });
     }
 
     pub fn read(self: *Self) !Key {
@@ -228,7 +260,6 @@ pub const Editor = struct {
         switch (self.mode) {
             .Command, .Visual => {
                 switch (ch) {
-                    // TODO : add line skips to movement for command { etc...
                     'j' => return .{ .movement = .down },
                     '}' => return .{ .movement = .down_10 },
                     'k' => return .{ .movement = .up },
@@ -252,7 +283,8 @@ pub const Editor = struct {
                             else => {},
                         }
                     },
-                    '\x0A', '\x0C', '\x0D' => return .{ .movement = .ret },
+                    // '\x0A', '\x0C', '\x0D' => return .{ .movement = .ret },
+                    '\x1b' => self.mode = .Command,
                     else => {},
                 }
             },
