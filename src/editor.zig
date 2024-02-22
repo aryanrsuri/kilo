@@ -66,27 +66,24 @@ pub const Editor = struct {
         }
     }
     pub fn move_cursor(self: *Self, mov: Movement) void {
-        std.debug.print("\n{any}\n ", .{mov});
         switch (mov) {
             .left => {
-                if (self.cx != 0) {
-                    self.cx -= 1;
-                }
+                if (self.cx > 0) self.cx -= 1;
             },
             .right => {
-                if (self.cx != self.cols - 1) {
-                    self.cx += 1;
-                }
+                if (self.cx < self.cols - 1) self.cx += 1;
             },
             .up => {
-                if (self.cy != 0) {
-                    self.cy -= 1;
-                }
+                if (self.cy > 0) self.cy -= 1;
             },
             .down => {
-                if (self.cy != (self.buffer.items.len - 1)) {
-                    self.cy += 1;
-                }
+                if (self.cy < self.buffer.items.len - 1) self.cy += 1;
+            },
+            .up_10 => {
+                if (self.cy > 0) self.cy -= 10;
+            },
+            .down_10 => {
+                if (self.cy < self.buffer.items.len - 1) self.cy += 10;
             },
             .ret => {},
             else => self.cx -= 1,
@@ -104,6 +101,9 @@ pub const Editor = struct {
             const CY: u16 = @bitCast(IT);
             self.row_offset = CY;
         }
+    }
+    pub fn render_status(self: *Self) !void {
+        _ = self;
     }
     pub fn render_rows(self: *Self) !void {
         var i: usize = 0;
@@ -150,7 +150,8 @@ pub const Editor = struct {
         try writer.writeAll("\x1B[H");
         try self.render_rows();
         const RO: i16 = @intCast(self.row_offset);
-        try writer.print("\x1b[{d};{d}H", .{ (self.cy - RO) + 1, self.cx + 1 });
+        const CO: i16 = @intCast(self.col_offset);
+        try writer.print("\x1b[{d};{d}H", .{ (self.cy - RO) + 1, (self.cx - CO) + 1 });
         try writer.writeAll("\x1B[?25h");
     }
 
@@ -169,6 +170,7 @@ pub const Editor = struct {
         switch (self.mode) {
             .Command, .Visual => {
                 switch (ch) {
+                    // TODO : add line skips to movement for command shift [ etc...
                     'j' => return .{ .movement = .down },
                     'k' => return .{ .movement = .up },
                     'h' => return .{ .movement = .left },
@@ -215,6 +217,9 @@ pub const Editor = struct {
         return .{ .char = ch };
     }
     pub fn dump(self: *Self) !void {
+        try self.enable_raw_mode();
+        defer self.disable_raw_mode();
+
         while (true) {
             try self.refresh();
             try self.process();
@@ -223,6 +228,13 @@ pub const Editor = struct {
         // self.deinit();
         try writer.writeAll("\x1b[2J");
         try writer.writeAll("\x1b[H");
+    }
+
+    pub fn repl(self: *Self) !void {
+        while (true) {
+            std.debug.print("{any}\n", .{try self.read()});
+            if (self.exit == true) break;
+        }
     }
 
     pub fn enable_raw_mode(self: *Self) !void {
@@ -241,13 +253,15 @@ pub const Editor = struct {
 
 const Mode = enum { Command, Insert, Visual };
 
-const Movement = enum(u16) {
-    down = 1000,
-    up = 1001,
-    left = 1002,
-    right = 1003,
-    escape = 1004,
-    ret = 1005,
+const Movement = enum {
+    down,
+    down_10,
+    up,
+    up_10,
+    left,
+    right,
+    escape,
+    ret,
 };
 
 const Key = union(enum) {
@@ -257,16 +271,16 @@ const Key = union(enum) {
 };
 
 pub const TITLE =
-    \\                VERSION 0.0.1 
-    \\      ___                       ___       ___     
-    \\     /\  \          ___        /\__\     /\  \    
-    \\     \:\  \        /\  \      /:/  /    /::\  \   
-    \\      \:\  \       \:\  \    /:/  /    /:/\:\  \  
-    \\       \:\  \      /::\__\  /:/  /    /:/  \:\  \ 
-    \\ _______\:\__\  __/:/\/__/ /:/__/    /:/__/ \:\__\
-    \\ \::::::::/__/ /\/:/  /    \:\  \    \:\  \ /:/  /
-    \\  \:\~~\~~     \::/__/      \:\  \    \:\  /:/  / 
-    \\   \:\  \       \:\__\       \:\  \    \:\/:/  /  
-    \\    \:\__\       \/__/        \:\__\    \::/  /   
-    \\     \/__/                     \/__/     \/__/    
+    \\                VERSION 0.0.1 \n
+    \\      ___                       ___       ___     \n
+    \\     /\  \          ___        /\__\     /\  \    \n
+    \\     \:\  \        /\  \      /:/  /    /::\  \   \n
+    \\      \:\  \       \:\  \    /:/  /    /:/\:\  \  \n
+    \\       \:\  \      /::\__\  /:/  /    /:/  \:\  \ \n
+    \\ _______\:\__\  __/:/\/__/ /:/__/    /:/__/ \:\__\\n
+    \\ \::::::::/__/ /\/:/  /    \:\  \    \:\  \ /:/  /\n
+    \\  \:\~~\~~     \::/__/      \:\  \    \:\  /:/  / \n
+    \\   \:\  \       \:\__\       \:\  \    \:\/:/  /  \n
+    \\    \:\__\       \/__/        \:\__\    \::/  /   \n
+    \\     \/__/                     \/__/     \/__/    \n
 ;
