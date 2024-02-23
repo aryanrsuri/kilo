@@ -71,8 +71,8 @@ pub const Editor = struct {
     pub fn process(self: *Self) !void {
         const key: Key = try self.read();
         switch (key) {
-            // .char => {},
-            .char => |c| try self.insert(c),
+            .char => {},
+            // .char => |c| try self.insert(c),
             .movement => |m| self.move_cursor(m),
             .delete => {},
             .inv => {},
@@ -89,13 +89,26 @@ pub const Editor = struct {
             // try self.buffer.append(&new_r);
             // self.lines += 1;
             // }
-            // var tests = [_]u8{'A'};
-            // var new = tests ++ c;
+            // self.buffer.insert(CX, new);
             if (CX < c.len) {
                 c[CX] = char;
                 self.cx += 1;
                 c.len += 1;
+            } else {
+                // var new_line = std.ArrayList(u8).init(self.alloc);
+                // defer new_line.deinit();
+                // try new_line.appendSlice(c);
+                // try new_line.append(char);
+                var ins = [_]u8{'s'};
+                try self.buffer.insert(CY, &ins);
             }
+            // for (0.., c) |i, byte| {
+            // _ = byte;
+            // _ = i;
+            //
+            //
+            //
+            // }
             // var new_r = c ++ [_]u8{char};
             // try self.buffer.insert(CY, new);
         } else {
@@ -290,29 +303,9 @@ pub const Editor = struct {
             },
             .Insert => {
                 switch (ch) {
-                    '\x1b' => {
-                        self.mode = .Command;
-                        // const nch = reader.readByte() catch return .{ .movement = .escape };
-                        // switch (nch) {
-                        //     '\x71' => {
-                        //         self.exit = true;
-                        //     },
-                        //     '\x5b' => {
-                        //         const nnch = reader.readByte() catch return .{ .movement = .escape };
-                        //         if (nnch == '\x33') {
-                        //             const nnnch = reader.readByte() catch return .{ .movement = .escape };
-                        //             if (nnnch == '\x7e') {
-                        //                 return Key.delete;
-                        //             }
-                        //         }
-                        //     },
-                        //     else => {},
-                        // }
-                    },
+                    '\x1b' => self.mode = .Command,
                     '\x7F' => return Key.delete,
-                    else => {
-                        return .{ .char = ch };
-                    },
+                    else => return .{ .char = ch },
                 }
             },
         }
