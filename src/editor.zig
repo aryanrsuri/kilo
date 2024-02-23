@@ -31,6 +31,7 @@ pub const Editor = struct {
     // buffer: std.ArrayList(std.ArrayList(u8)),
     lines: usize,
     filepath: []const u8 = "No name",
+    curr_key: Key = Key.inv,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
         const size: Size = try get_size();
@@ -70,9 +71,9 @@ pub const Editor = struct {
 
     pub fn process(self: *Self) !void {
         const key: Key = try self.read();
+        self.curr_key = key;
         switch (key) {
             .char => {},
-            // .char => |c| try self.insert(c),
             .movement => |m| self.move_cursor(m),
             .delete => {},
             .inv => {},
@@ -206,7 +207,11 @@ pub const Editor = struct {
 
     pub fn render_status(self: *Self) !void {
         try writer.writeAll("\x1b[K");
-        try writer.print("{s}\t\t\t[{s}]\t\t\t{d}:{d}:{d}L", .{ @tagName(self.mode), self.filepath, self.cy, self.cx, self.lines });
+        var ch = switch (self.curr_key) {
+            .char => self.curr_key.char,
+            else => '.',
+        };
+        try writer.print("{s}\t\t\t{c}\t\t\t[{s}]\t\t\t{d}:{d}:{d}L", .{ @tagName(self.mode), ch, self.filepath, self.cy, self.cx, self.lines });
         try writer.writeAll("\x1b[m");
     }
 
