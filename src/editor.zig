@@ -1,18 +1,19 @@
 const std = @import("std");
 const os = std.os;
-
 const reader = std.io.getStdIn().reader();
 const writer = std.io.getStdOut().writer();
 const stdin_fd = std.io.getStdIn().handle;
+const BUFFER_MAX: comptime_int = 1048576;
 
-pub const BUFFER_MAX: comptime_int = 1048576;
 pub const Editor = struct {
     const Self = @This();
 
+    // Status flags
     termios: os.termios = undefined,
     exit: bool = false,
     mode: Mode = .Command,
-    alloc: std.mem.Allocator,
+    curr_key: Key = Key.inv,
+    filepath: []const u8 = "No name",
 
     // Terminal Offset
     row_offset: usize,
@@ -26,26 +27,18 @@ pub const Editor = struct {
     cx: i16,
     cy: i16,
 
-    // Charset buffer
-    // buffer: std.ArrayList([1048576]u8),
-    // buffer: std.ArrayList([]u8),
-    // buffer: std.ArrayList(std.ArrayList(u8)),
+    // Buffer configuration
     buffer: []u8,
     eof: usize = 0,
     lines: usize,
-    filepath: []const u8 = "No name",
-    curr_key: Key = Key.inv,
+    alloc: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !Self {
-        const size: Size = try get_size();
-        // const buffer: std.ArrayList([1048576]u8) = std.ArrayList([1048576]u8).init(allocator);
-        // const buffer = std.ArrayList([]u8).init(allocator);
-        // const buffer: std.ArrayList(strs) = std.ArrayList(lines.items).init(allocator);
-
+        const ws: WinSize = try winsize();
         var editor: Editor = .{
             .alloc = allocator,
-            .rows = size.rows - 1,
-            .cols = size.cols,
+            .rows = ws.rows - 1,
+            .cols = ws.cols,
             .cx = 0,
             .cy = 0,
             .row_offset = 0,
@@ -53,23 +46,20 @@ pub const Editor = struct {
             .lines = 0,
             .buffer = try allocator.alloc(u8, BUFFER_MAX),
         };
-
         editor.buffer[0] = 0;
         return editor;
     }
 
     pub fn deinit(self: *Self) void {
-        try self.buffer.deinit();
-        try self.bufferv2.deinit();
+        self.alloc.free(self.buffer);
         self.* = undefined;
     }
 
-    pub fn get_size() !Size {
-        // var ws = std.mem.zeroes(os.system.winsize);
+    pub fn winsize() !WinSize {
         var ws: os.system.winsize = undefined;
         switch (std.os.system.getErrno(os.system.ioctl(stdin_fd, os.system.T.IOCGWINSZ, @intFromPtr(&ws)))) {
             .SUCCESS => {
-                return Size{ .rows = ws.ws_row, .cols = ws.ws_col };
+                return .{ .rows = ws.ws_row, .cols = ws.ws_col };
             },
             else => return error.SizeNotFound,
         }
@@ -299,7 +289,8 @@ pub const Editor = struct {
                     '\x3a' => {
                         const nch = reader.readByte() catch return .{ .movement = .escape };
                         switch (nch) {
-                            '\x71' => self.exit = true,
+                            // W or Q, we will always save for testing
+                            '\x71', '\x77' => self.exit = true,
                             else => {},
                         }
                     },
@@ -363,7 +354,7 @@ pub const Editor = struct {
     }
 };
 
-const Size = struct { rows: u16, cols: u16 };
+const WinSize = struct { rows: u16, cols: u16 };
 const Mode = enum { Command, Insert, Visual };
 const Movement = enum {
     down,
