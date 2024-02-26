@@ -55,13 +55,13 @@ pub const Editor = struct {
     pub fn deinit(self: *Self) void {
         try self.buffer.deinit();
         try self.bufferv2.deinit();
-        // self.alloc.free(self.buffer);
         self.* = undefined;
     }
 
     pub fn get_size() !Size {
-        var ws = std.mem.zeroes(os.system.winsize);
-        switch (std.os.system.getErrno(os.system.ioctl(stdin_fd, os.system.T.IOCGWINSZ, &ws))) {
+        // var ws = std.mem.zeroes(os.system.winsize);
+        var ws: os.system.winsize = undefined;
+        switch (std.os.system.getErrno(os.system.ioctl(stdin_fd, os.system.T.IOCGWINSZ, @intFromPtr(&ws)))) {
             .SUCCESS => {
                 return Size{ .rows = ws.ws_row, .cols = ws.ws_col };
             },
