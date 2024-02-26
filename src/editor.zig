@@ -5,6 +5,7 @@ const reader = std.io.getStdIn().reader();
 const writer = std.io.getStdOut().writer();
 const stdin_fd = std.io.getStdIn().handle;
 
+pub const BUFFER_MAX: comptime_int = 1048576;
 pub const Editor = struct {
     const Self = @This();
 
@@ -27,8 +28,10 @@ pub const Editor = struct {
 
     // Charset buffer
     // buffer: std.ArrayList([1048576]u8),
-    buffer: std.ArrayList([]u8),
+    // buffer: std.ArrayList([]u8),
     // buffer: std.ArrayList(std.ArrayList(u8)),
+    buffer: []u8,
+    eof: usize = 0,
     lines: usize,
     filepath: []const u8 = "No name",
     curr_key: Key = Key.inv,
@@ -36,10 +39,10 @@ pub const Editor = struct {
     pub fn init(allocator: std.mem.Allocator) !Self {
         const size: Size = try get_size();
         // const buffer: std.ArrayList([1048576]u8) = std.ArrayList([1048576]u8).init(allocator);
-        const buffer = std.ArrayList([]u8).init(allocator);
+        // const buffer = std.ArrayList([]u8).init(allocator);
         // const buffer: std.ArrayList(strs) = std.ArrayList(lines.items).init(allocator);
 
-        return .{
+        var editor: Editor = .{
             .alloc = allocator,
             .rows = size.rows - 1,
             .cols = size.cols,
@@ -48,8 +51,11 @@ pub const Editor = struct {
             .row_offset = 0,
             .col_offset = 0,
             .lines = 0,
-            .buffer = buffer,
+            .buffer = try allocator.alloc(u8, BUFFER_MAX),
         };
+
+        editor.buffer[0] = 0;
+        return editor;
     }
 
     pub fn deinit(self: *Self) void {
@@ -73,123 +79,93 @@ pub const Editor = struct {
         const key: Key = try self.read();
         self.curr_key = key;
         switch (key) {
-            .char => {},
+            .char => |c| try self.insert(c),
             .movement => |m| self.move_cursor(m),
             .delete => {},
             .inv => {},
         }
     }
 
+    pub fn get_raw_x(self: *Self) u16 {
+        const COLS: i16 = @bitCast(self.cols);
+        const RAW: u16 = @bitCast((self.cx * COLS) + self.cy);
+        return RAW;
+    }
+
     pub fn insert(self: *Self, char: u8) !void {
-        var CY: u16 = @bitCast(self.cy);
-        var CX: u16 = @bitCast(self.cx);
-        if (self.buffer.items.len > 0) {
-            var c = self.buffer.items[CY];
-            // if (char == '\n') {
-            // var new_r = [_]u8{char};
-            // try self.buffer.append(&new_r);
-            // self.lines += 1;
-            // }
-            // self.buffer.insert(CX, new);
-            if (CX < c.len) {
-                c[CX] = char;
-                self.cx += 1;
-                c.len += 1;
-            } else {
-                // var new_line = std.ArrayList(u8).init(self.alloc);
-                // defer new_line.deinit();
-                // try new_line.appendSlice(c);
-                // try new_line.append(char);
-                var ins = [_]u8{'s'};
-                try self.buffer.insert(CY, &ins);
-            }
-            // for (0.., c) |i, byte| {
-            // _ = byte;
-            // _ = i;
-            //
-            //
-            //
-            // }
-            // var new_r = c ++ [_]u8{char};
-            // try self.buffer.insert(CY, new);
-        } else {
-            var new_r = [_]u8{char};
-            try self.buffer.append(&new_r);
+        // TODO : use raw x function
+        const COLS: i16 = @bitCast(self.cols);
+        const RAW: u16 = @bitCast((self.cx * COLS) + self.cy);
+        self.buffer[RAW] = char;
+        self.eof += 1;
+        self.cx += 1;
+        if (char == '\n') {
+            self.rows += 1;
             self.lines += 1;
+            self.cx = 0;
         }
-        // self.buffer.append(item: T)
-        // var c = self.buffer.items[CY];
-        // var new_c : [c.len + 1]u8 = undefined;
-
-        try self.render_rows();
-        // if (curr) |c| {
-        // std.debug.print("CURR ROW {any}\n", .{c});
-        // CX = if (CX < 0 or CX > curr.len)
-        // if (CX < 0 or CX > c.len) CX = @truncate(c.len);
-        // c[CX] = char;
-        // self.cx += 1;
-        // c.len += 1;
-
+        //
+        // try self.render_rows();
     }
     pub fn move_cursor(self: *Self, mov: Movement) void {
-        var CY: u16 = @bitCast(self.cy);
-        var curr = if (self.cy >= self.buffer.items.len) null else self.buffer.items[CY];
+        // var CY: u16 = @bitCast(self.cy);
+        // var curr = if (self.cy >= self.buffer.items.len) null else self.buffer.items[CY];
         switch (mov) {
             .left => {
                 if (self.cx > 0) {
                     self.cx -= 1;
-                } else if (self.cy > 0) {
-                    self.cy -= 1;
-                    CY = @bitCast(self.cy);
-                    const LEN: u16 = @truncate(self.buffer.items[CY].len);
-                    const CX: i16 = @bitCast(LEN);
-                    self.cx = CX;
+                    // } else if (self.cy > 0) {
+                    // self.cy -= 1;
+                    // CY = @bitCast(self.cy);
+                    // const LEN: u16 = @truncate(self.buffer.items[CY].len);
+                    // const CX: i16 = @bitCast(LEN);
+                    // self.cx = CX;
                 }
             },
             .right => {
-                if (curr) |c| {
-                    if (self.cx < c.len) {
-                        self.cx += 1;
-                    } else if (self.cx == c.len) {
-                        self.cy += 1;
-                        self.cx = 0;
-                    }
-                }
+                // if (curr) |c| {
+                // if (self.cx < c.len) {
+                self.cx += 1;
+                // } else if (self.cx == c.len) {
+                // self.cy += 1;
+                // self.cx = 0;
+                // }
+                // }
             },
             .up => {
                 if (self.cy > 0) self.cy -= 1;
             },
             .down => {
-                if (self.cy < self.buffer.items.len) self.cy += 1;
+                self.cy += 1;
             },
-            .up_10 => {
-                if (self.cy > 0 and self.cy - 10 > 0) self.cy -= 10;
-            },
-            .down_10 => {
-                if (self.cy + 10 < self.buffer.items.len) self.cy += 10;
-            },
+            // .up_10 => {
+            // if (self.cy > 0 and self.cy - 10 > 0) self.cy -= 10;
+            // },
+            // .down_10 => {
+            // if (self.cy + 10 < self.buffer.items.len) self.cy += 10;
+            // },
             .zero_cx => {
                 if (self.cx > 0) self.cx = 0;
             },
-            .zero_cx_cy => {
-                if (self.cy < self.buffer.items.len) {
-                    self.cx = 0;
-                    self.cy = 0;
-                }
-            },
+            // .zero_cx_cy => {
+            // if (self.cy < self.buffer.items.len) {
+            // self.cx = 0;
+            // self.cy = 0;
+            // }
+            // },
             .ret => {},
             else => self.cx -= 1,
         }
 
-        CY = @bitCast(self.cy);
-        curr = if (self.cy >= self.buffer.items.len) null else self.buffer.items[CY];
-        if (curr) |c| {
-            if (self.cx > c.len) {
-                const CL: u16 = @truncate(c.len);
-                const CX: i16 = @bitCast(CL);
-                self.cx = CX;
-            }
-        }
+        // CY = @bitCast(self.cy);
+        // curr = if (self.cy >= self.buffer.items.len) null else self.buffer.items[CY];
+        // if (curr) |c| {
+        //     if (self.cx > c.len) {
+        //         const CL: u16 = @truncate(c.len);
+        //         const CX: i16 = @bitCast(CL);
+        //         self.cx = CX;
+        //     }
+        // }
     }
 
     pub fn scroll(self: *Self) void {
@@ -217,33 +193,56 @@ pub const Editor = struct {
 
     pub fn render_rows(self: *Self) !void {
         var i: usize = 0;
+        // while (i < self.rows) : (i += 1) {
+        //     var frow = i + self.row_offset;
+        //     _ = frow;
+        //
+        //     try writer.writeAll("\x1B[K");
+        //     try writer.writeAll("\r\n");
+        // }
         while (i < self.rows) : (i += 1) {
             var file_row = i + self.row_offset;
-            if (file_row >= self.buffer.items.len) {
-                if (self.buffer.items.len == 0 and i == @divFloor(self.rows, 3)) {
-                    // 12
-                    const bytes: []const u8 = "Vi Editor written in Zig, in less than 1000 lines!";
-                    var padding = (self.cols - bytes.len) / 2;
-                    if (padding > 0) {
-                        try writer.writeAll("~");
-                        padding -= 1;
-                    }
-                    while (padding > 0) : (padding -= 1) {
-                        try writer.writeAll(" ");
-                    }
-                    try writer.print("{s}", .{bytes});
-                } else {
-                    try writer.writeAll("~");
-                }
+            if (file_row >= self.lines) {
+                try writer.writeAll("~");
             } else {
-                const row = self.buffer.items[file_row];
-                var len = row.len;
-                if (len > self.cols) len = self.cols;
-                try writer.writeAll(row[0..len]);
+                try writer.writeAll("testing");
+                // for (self.buffer) |ch| {
+                //     if (ch != 170) {
+                //         try writer.print("{c}", .{ch});
+                //     }
+                // }
             }
             try writer.writeAll("\x1B[K");
             try writer.writeAll("\r\n");
         }
+        // var i: usize = 0;
+        // while (i < self.rows) : (i += 1) {
+        //     var file_row = i + self.row_offset;
+        //     if (file_row >= self.lines) {
+        //         if (self.buffer.len == 0 and i == @divFloor(self.rows, 3)) {
+        //             const bytes: []const u8 = "Vi Editor written in Zig, in less than 1000 lines!";
+        //             var padding = (self.cols - bytes.len) / 2;
+        //             if (padding > 0) {
+        //                 try writer.writeAll("~");
+        //                 padding -= 1;
+        //             }
+        //             while (padding > 0) : (padding -= 1) {
+        //                 try writer.writeAll(" ");
+        //             }
+        //             try writer.print("{s}", .{bytes});
+        //         } else {
+        //             try writer.writeAll("~");
+        //         }
+        //     } else {
+        //         for (self.buffer) |ch| {
+        //             if (ch != 170) {
+        //                 try writer.writeByte(ch);
+        //             }
+        //         }
+        //     }
+        //     try writer.writeAll("\x1B[K");
+        //     try writer.writeAll("\r\n");
+        // }
     }
     pub fn refresh(self: *Self) !void {
         self.scroll();
@@ -261,20 +260,23 @@ pub const Editor = struct {
         self.filepath = filename;
         const file = try std.fs.cwd().openFile(filename, .{});
         defer file.close();
-        while (try file.reader().readUntilDelimiterOrEofAlloc(self.alloc, '\n', 1024 * 1024)) |line| {
-            // try self.buffer.insertSlice(self.lines, line);
-            // self.lines += line.len;
-            // try self.buffer.insert(self.lines, '\n');
-            // self.lines += 1;
-            try self.buffer.append(line);
+        while (try file.reader().readUntilDelimiterOrEofAlloc(self.alloc, '\n', BUFFER_MAX)) |line| {
+            for (line) |ch| {
+                self.buffer[self.eof] = ch;
+                self.eof += 1;
+            }
+            self.buffer[self.eof] = '\n';
+            self.eof += 1;
             self.lines += 1;
         }
-        // std.debug.print("{c} {d}", .{ self.bufferv2.items, self.bufferv2.items.len });
     }
 
+    pub fn insert_char_at(self: *Self, pos: usize) !void {
+        _ = pos;
+        _ = self;
+    }
     pub fn read(self: *Self) !Key {
         const ch = try reader.readByte();
-
         switch (self.mode) {
             .Command, .Visual => {
                 switch (ch) {
@@ -331,11 +333,17 @@ pub const Editor = struct {
     }
 
     pub fn repl(self: *Self) !void {
-        while (true) {
-            std.debug.print("{any}\n", .{try self.process()});
-            // try self.process();
-            if (self.exit == true) break;
+        // while (true) {
+        for (self.buffer) |ch| {
+            if (ch != 170) {
+                try writer.writeByte(ch);
+            }
         }
+        // std.debug.print("{any}\n", .{try self.process()});
+        // try self.process();
+        // self.open(filename: []const u8)
+        // if (self.exit == true) break;
+        // }
     }
 
     pub fn enable_raw_mode(self: *Self) !void {
