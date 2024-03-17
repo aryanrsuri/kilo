@@ -29,7 +29,8 @@ pub fn main() !void {
     defer std.process.argsFree(alloc, args);
     var edit = try Editor.init(alloc);
     if (args.len == 2) try edit.open(args[1]);
-    try edit.dump();
+    defer edit.deinit();
+    // try edit.dump();
     // try edit.repl();
     // edit.deinit();
 }
