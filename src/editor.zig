@@ -73,13 +73,14 @@ pub const Editor = struct {
         const key: Key = try self.read();
         self.curr_key = key;
         switch (key) {
-            .char => {},
+            .char => |c| try self.insert(c),
             .movement => |m| self.move_cursor(m),
             .delete => {},
             .inv => {},
         }
     }
 
+    /// TODO : Fix insert , it is seeming to ad a new row for each char
     pub fn insert(self: *Self, char: u8) !void {
         var CY: u16 = @bitCast(self.cy);
         var CX: u16 = @bitCast(self.cx);
@@ -91,6 +92,7 @@ pub const Editor = struct {
             // self.lines += 1;
             // }
             // self.buffer.insert(CX, new);
+
             if (CX < c.len) {
                 c[CX] = char;
                 self.cx += 1;
@@ -100,7 +102,7 @@ pub const Editor = struct {
                 // defer new_line.deinit();
                 // try new_line.appendSlice(c);
                 // try new_line.append(char);
-                var ins = [_]u8{'s'};
+                var ins = [_]u8{char};
                 try self.buffer.insert(CY, &ins);
             }
             // for (0.., c) |i, byte| {
@@ -215,6 +217,7 @@ pub const Editor = struct {
         try writer.writeAll("\x1b[m");
     }
 
+    /// TODO : Seems to be not renderes the chars
     pub fn render_rows(self: *Self) !void {
         var i: usize = 0;
         while (i < self.rows) : (i += 1) {
@@ -239,7 +242,8 @@ pub const Editor = struct {
                 const row = self.buffer.items[file_row];
                 var len = row.len;
                 if (len > self.cols) len = self.cols;
-                try writer.writeAll(row[0..len]);
+                try writer.writeAll(row);
+                // try writer.print("{s}", .{row[0..len]});
             }
             try writer.writeAll("\x1B[K");
             try writer.writeAll("\r\n");
