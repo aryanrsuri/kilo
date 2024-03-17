@@ -4,7 +4,7 @@ const os = std.os;
 const reader = std.io.getStdIn().reader();
 const writer = std.io.getStdOut().writer();
 const stdin_fd = std.io.getStdIn().handle;
-
+pub const BUF_SIZE: comptime_int = 1024 * 1024 * 10;
 pub const Editor = struct {
     const Self = @This();
 
@@ -29,6 +29,7 @@ pub const Editor = struct {
     // buffer: std.ArrayList([1048576]u8),
     buffer: std.ArrayList([]u8),
     // buffer: std.ArrayList(std.ArrayList(u8)),
+    // buffer: []u8,
     lines: usize,
     filepath: []const u8 = "No name",
     curr_key: Key = Key.inv,
@@ -39,6 +40,7 @@ pub const Editor = struct {
         const buffer = std.ArrayList([]u8).init(allocator);
         // const buffer: std.ArrayList(strs) = std.ArrayList(lines.items).init(allocator);
 
+        // const buffer = allocator.alloc(u8, BUF_SIZE);
         return .{
             .alloc = allocator,
             .rows = size.rows - 1,
@@ -270,6 +272,7 @@ pub const Editor = struct {
             // self.lines += line.len;
             // try self.buffer.insert(self.lines, '\n');
             // self.lines += 1;
+
             try self.buffer.append(line);
             self.lines += 1;
         }
@@ -326,7 +329,7 @@ pub const Editor = struct {
 
         while (true) {
             try self.refresh();
-            try self.process();
+            // try self.process();
             if (self.exit == true) break;
         }
         // self.deinit();
